@@ -1,0 +1,6 @@
+@DigitalMovieStore.API_HostAddress = http://localhost:5211
+
+GET {{DigitalMovieStore.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
