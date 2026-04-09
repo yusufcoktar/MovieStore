@@ -22,6 +22,11 @@ namespace DigitalMovieStore.Data.Contexts
         public DbSet<Genre> Genres { get; set; }
         public DbSet<Actor> Actors { get; set; }
 
+        // E-Ticaret ve Kullanıcı Yönetimi Tabloları
+        public DbSet<User> Users { get; set; }
+        public DbSet<Order> Orders { get; set; }
+        public DbSet<Review> Reviews { get; set; }
+
         // İleride tabloların kısıtlamalarını (Maksimum karakter, zorunlu alanlar vb.)
         // ayarlamak istersek OnModelCreating metodunu burada ezeceğiz.
     }
