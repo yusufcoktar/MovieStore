@@ -4,6 +4,7 @@ using DigitalMovieStore.Data.Contexts;
 using Microsoft.EntityFrameworkCore;
 using DigitalMovieStore.Core.Entities;
 using DigitalMovieStore.Core.DTOs;
+using Microsoft.AspNetCore.Authorization;
 
 namespace DigitalMovieStore.API.Controllers
 {
@@ -20,17 +21,18 @@ namespace DigitalMovieStore.API.Controllers
             _context = context;
         }
 
-        
         // Bu metod, dışarıdan biri API'mize "Bana filmleri ver" dediğinde çalışacak.
         // GET: api/movies
         [HttpGet]
         public async Task<IActionResult> GetAllMovies()
         {
-            // SİHİRLİ DOKUNUŞ: .Where(m => m.IsActive) 
-            // SQL'e "Sadece IsActive değeri true olanları getir" diyoruz.
+            // SİHİRLİ DOKUNUŞ 1: .Where() ile sadece aktif olanları getiriyoruz.
+            // SİHİRLİ DOKUNUŞ 2: .Include() ile bu filmlere bağlı Türleri (Genres) de peşine takıyoruz (Eager Loading).
             var movies = await _context.Movies
-                                       .Where(m => m.IsActive)
-                                       .ToListAsync();
+                .Where(m => m.IsActive)
+                .Include(m => m.Genres)
+                .Include(m => m.Actors) // <- Oyuncuları (Cast) getiren yeni komutumuz!
+                .ToListAsync();
 
             return Ok(movies);
         }
@@ -38,35 +40,98 @@ namespace DigitalMovieStore.API.Controllers
         // POST: api/movies
         // Bu metod, dışarıdan (React/Angular veya Swagger) JSON formatında bir film verisi geldiğinde çalışacak.
         [HttpPost]
-        public async Task<IActionResult> AddMovie(MovieCreateDto movieDto)
+        [Authorize(Roles = "Admin")] // SİHİRLİ DOKUNUŞ: Sadece Admin pasaportu olanlar film ekleyebilir!
+        public async Task<IActionResult> CreateMovie([FromBody] MovieCreateDto movieDto)
         {
-            // 1. Adım: Dışarıdan gelen o kısıtlı DTO verisini, veritabanımızın anladığı asıl Movie sınıfına dönüştürüyoruz (Mapping).
+            // Eğer frontend eksik veya hatalı veri gönderirse (Örn: fiyat harf içerirse) anında reddet
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            // 1. DTO'dan (Gümrükten) geçen verileri gerçek Movie nesnesine aktarıyoruz (Mapping)
             var newMovie = new Movie
             {
                 Title = movieDto.Title,
+                OriginalTitle = movieDto.OriginalTitle,
                 Description = movieDto.Description,
                 Price = movieDto.Price,
+                DiscountedPrice = movieDto.DiscountedPrice,
 
-                // Mimar Dokunuşu: Dışarıdan sadece "Yıl" (Örn: 2010) aldık, 
-                // bunu veritabanının istediği "Tarih" formatına (1 Ocak 2010) kod içinde biz çeviriyoruz.
+                // Frontend sadece yılı gönderiyor (Örn: 2026), biz onu SQL'in anladığı DateTime formatına çeviriyoruz
                 ReleaseDate = new DateTime(movieDto.ReleaseYear, 1, 1),
 
-                // Güvenlik: Dışarıdan kimsenin IsActive göndermesine izin vermedik, biz kendimiz True yapıyoruz.
-                IsActive = true
+                Duration = movieDto.Duration,
+                Director = movieDto.Director,
+                Language = movieDto.Language,
+                Country = movieDto.Country,
+                Resolution = movieDto.Resolution,
+                AgeLimit = movieDto.AgeLimit,
+                SubtitleLanguages = movieDto.SubtitleLanguages,
+
+                PosterUrl = movieDto.PosterUrl,
+                BackdropUrl = movieDto.BackdropUrl,
+                TrailerUrl = movieDto.TrailerUrl,
+                ImdbRating = movieDto.ImdbRating,
+
+                IsActive = true // Yeni eklenen bir film varsayılan olarak yayındadır
             };
 
-            // 2. Adım: Dönüştürdüğümüz bu temiz ve güvenli asıl nesneyi veritabanına ekliyoruz.
-            await _context.Movies.AddAsync(newMovie);
+            // --- MİMAR DOKUNUŞU: Türleri (Genres) Veritabanı ile Eşleme ---
+            if (movieDto.Genres != null && movieDto.Genres.Any())
+            {
+                foreach (var genreName in movieDto.Genres)
+                {
+                    // 1. Bu isimde bir tür veritabanında zaten var mı diye bak
+                    var existingGenre = await _context.Genres.FirstOrDefaultAsync(g => g.Name == genreName);
+
+                    if (existingGenre != null)
+                    {
+                        // 2. Varsa, direkt köprü tablosuyla filme bağla
+                        newMovie.Genres.Add(existingGenre);
+                    }
+                    else
+                    {
+                        // 3. Yoksa (Admin yeni bir tür yazmışsa), önce türü oluştur sonra bağla!
+                        newMovie.Genres.Add(new Genre { Name = genreName });
+                    }
+                }
+            }
+            // --------------------------------------------------------------
+            // --- MİMAR DOKUNUŞU: Oyuncuları (Actors) Veritabanı ile Eşleme ---
+            if (movieDto.Cast != null && movieDto.Cast.Any())
+            {
+                foreach (var actorName in movieDto.Cast)
+                {
+                    // Bu isimde bir oyuncu veritabanında zaten var mı?
+                    var existingActor = await _context.Actors.FirstOrDefaultAsync(a => a.Name == actorName);
+
+                    if (existingActor != null)
+                    {
+                        // Varsa, direkt filme bağla
+                        newMovie.Actors.Add(existingActor);
+                    }
+                    else
+                    {
+                        // Yoksa, yeni bir oyuncu kaydı oluştur ve bağla!
+                        newMovie.Actors.Add(new Actor { Name = actorName });
+                    }
+                }
+            }
+            // ----------------------------------------------------------------
+
+            // 2. Veritabanına ekleme emri (Insert)
+            _context.Movies.Add(newMovie);
             await _context.SaveChangesAsync();
 
-            // İşlem başarılı! Şimdilik eklenen filmin ID'sini ve ufak bir başarı mesajı dönelim.
+            // 3. Başarı mesajı ve SQL'in atadığı ID ile birlikte filmi geri dön
             return Ok(new
             {
-                Id = newMovie.Id,
-                Title = newMovie.Title,
-                Message = "Film güvenli bir şekilde (DTO üzerinden) eklendi!"
+                Message = "Film başarıyla mağazaya eklendi!",
+                Movie = newMovie
             });
         }
+
         // DELETE: api/movies/5
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteMovie(int id)
