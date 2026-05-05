@@ -18,5 +18,12 @@ namespace DigitalMovieStore.Core.Entities
         // Bir kullanıcının birden fazla siparişi ve yorumu olabilir
         public ICollection<Order> Orders { get; set; } = new List<Order>();
         public ICollection<Review> Reviews { get; set; } = new List<Review>();
+
+        // --- GÜVENLİK VE DOĞRULAMA ---
+        // ... Mevcut özelliklerin
+        public bool IsEmailConfirmed { get; set; } = false; // E-posta doğrulandı mı?
+        public string? ResetCode { get; set; }
+        public DateTime? ResetCodeExpires { get; set; }
+
     }
 }

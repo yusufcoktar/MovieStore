@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using DigitalMovieStore.Service.Email;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +48,8 @@ builder.Services.AddCors(options =>
               .AllowCredentials();
     });
 });
+
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 var app = builder.Build();
 

@@ -36,6 +36,20 @@ namespace DigitalMovieStore.API.Controllers
 
             return Ok(movies);
         }
+        // SADECE ADMİNLER İÇİN: Silinenler (Arşiv) dahil tüm filmleri getiren VIP metod
+        // GET: api/movies/AdminList
+        [HttpGet("AdminList")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAllMoviesForAdmin()
+        {
+            var movies = await _context.Movies
+                // DİKKAT: Burada .Where(m => m.IsActive) yok! Her şeyi çekecek.
+                .Include(m => m.Genres)
+                .Include(m => m.Actors)
+                .ToListAsync();
+
+            return Ok(movies);
+        }
 
         // POST: api/movies
         // Bu metod, dışarıdan (React/Angular veya Swagger) JSON formatında bir film verisi geldiğinde çalışacak.
@@ -158,6 +172,34 @@ namespace DigitalMovieStore.API.Controllers
                 Message = $"'{movie.Title}' adlı film mağaza vitrininden başarıyla kaldırıldı (Soft Delete uygulandı).",
                 DeletedMovieId = movie.Id
             });
+        }
+        // PATCH: api/movies/QuickEdit/5
+        // Sadece Fiyat ve Durum güncelleyen "Hızlı Düzenle" metodu
+        [HttpPatch("QuickEdit/{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> QuickUpdateMovie(int id, [FromBody] MovieQuickEditDto editDto)
+        {
+            // 1. Filmi bul
+            var movie = await _context.Movies.FindAsync(id);
+            if (movie == null)
+            {
+                return NotFound(new { Message = "Güncellenecek film bulunamadı." });
+            }
+
+            // 2. Sadece pop-up'tan gelen verileri değiştir! (Filmin diğer hiçbir verisine DOKUNMUYORUZ)
+            movie.Price = editDto.Price;
+            movie.DiscountedPrice = editDto.DiscountedPrice;
+
+            // Mimar Dokunuşu: Senin veritabanında "IsActive" olduğu için Durum'u ona göre çeviriyoruz
+            if (editDto.Status == "Yayında")
+                movie.IsActive = true;
+            else if (editDto.Status == "Taslak" || editDto.Status == "Arşiv")
+                movie.IsActive = false;
+
+            // 3. Değişiklikleri kaydet
+            await _context.SaveChangesAsync();
+
+            return Ok(new { Message = "Film fiyatı ve durumu başarıyla güncellendi!" });
         }
     }
 }
