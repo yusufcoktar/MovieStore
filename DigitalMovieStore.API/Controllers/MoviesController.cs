@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using DigitalMovieStore.Core.Entities;
 using DigitalMovieStore.Core.DTOs;
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace DigitalMovieStore.API.Controllers
 {
@@ -200,6 +201,66 @@ namespace DigitalMovieStore.API.Controllers
             await _context.SaveChangesAsync();
 
             return Ok(new { Message = "Film fiyatı ve durumu başarıyla güncellendi!" });
+        }
+        // --- FİLM DETAYINI GETİR ---
+        // GET: api/movies/5
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetMovie(int id)
+        {
+            var movie = await _context.Movies
+                .Include(m => m.Genres)
+                .Include(m => m.Actors)
+                .FirstOrDefaultAsync(m => m.Id == id);
+
+            if (movie == null) return NotFound("Film bulunamadı.");
+            return Ok(movie);
+        }
+
+        // --- FİLMİN YORUMLARINI GETİR ---
+        // GET: api/movies/{movieId}/reviews
+        [HttpGet("{movieId}/reviews")]
+        public async Task<IActionResult> GetMovieReviews(int movieId)
+        {
+            var reviews = await _context.Reviews
+                .Include(r => r.User)
+                .Where(r => r.MovieId == movieId)
+                .OrderByDescending(r => r.ReviewDate) // Senin modele göre güncellendi
+                .Select(r => new
+                {
+                    r.Id,
+                    r.Comment,
+                    r.Rating,
+                    ReviewDate = r.ReviewDate, // Senin modele göre güncellendi
+                    Username = r.User.Username
+                })
+                .ToListAsync();
+
+            return Ok(reviews);
+        }
+
+        // --- FİLME YENİ YORUM EKLE ---
+        // POST: api/movies/{movieId}/reviews
+        [HttpPost("{movieId}/reviews")]
+        [Authorize]
+        public async Task<IActionResult> AddReview(int movieId, [FromBody] DigitalMovieStore.Core.DTOs.ReviewCreateDto reviewDto)
+        {
+            var userIdString = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdString)) return Unauthorized();
+            int userId = int.Parse(userIdString);
+
+            var newReview = new Review
+            {
+                MovieId = movieId,
+                UserId = userId,
+                Comment = reviewDto.Comment,
+                Rating = reviewDto.Rating,
+                ReviewDate = DateTime.Now // Senin modele göre güncellendi
+            };
+
+            _context.Reviews.Add(newReview);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { Message = "Yorumunuz başarıyla eklendi!" });
         }
     }
 }

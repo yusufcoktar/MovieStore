@@ -34,7 +34,7 @@ namespace DigitalMovieStore.API.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register(UserRegisterDto request)
         {
-            // 1. Kullanıcıyı bulmaya çalış
+            // 1. Kullanıcıyı e-posta VEYA kullanıcı adına göre bulmaya çalış
             var existingUser = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email || u.Username == request.Username);
 
             // 6 haneli doğrulama kodu üret
@@ -44,15 +44,18 @@ namespace DigitalMovieStore.API.Controllers
 
             if (existingUser != null)
             {
-                // Eğer kullanıcı var ve ONAYLIYSA -> Hata ver, bu hesap dolu!
+                // Eğer kullanıcı var ve ONAYLIYSA -> Hata ver
                 if (existingUser.IsEmailConfirmed)
                 {
                     return BadRequest("Bu e-posta veya kullanıcı adı zaten kullanımda!");
                 }
                 else
                 {
-                    // Kullanıcı var ama ONAYSIZ! (Senin yaşadığın senaryo: Yarıda bırakıp çıkmış)
-                    // Bilgilerini güncelleyip yeni kod veriyoruz, veritabanını çöplüğe çevirmiyoruz.
+                    // 🔥 BURASI KRİTİK: Kullanıcı var ama ONAYSIZ (Zombie hesap)
+                    // Bilgilerini ve EN ÖNEMLİSİ e-postasını yeni girdiği veriyle güncelliyoruz!
+                    existingUser.Username = request.Username;
+                    existingUser.Email = request.Email; // <--- Hata buradaydı, artık yeni maili de kaydediyoruz.
+
                     existingUser.PasswordHash = passwordHash;
                     existingUser.ResetCode = verificationCode;
                     existingUser.ResetCodeExpires = DateTime.Now.AddMinutes(15);
@@ -80,12 +83,12 @@ namespace DigitalMovieStore.API.Controllers
             try
             {
                 string mailBody = $@"
-                    <div style='font-family: Arial, sans-serif; padding: 20px; border-radius: 10px;'>
-                        <h2 style='color: #e50914;'>CineVerse'e Hoş Geldiniz!</h2>
-                        <p>Merhaba {request.Username},</p>
-                        <p>Kaydınızı tamamlamak için aşağıdaki 6 haneli doğrulama kodunu kullanın:</p>
-                        <h1 style='background-color: #f4f4f4; padding: 10px; text-align: center; letter-spacing: 5px;'>{verificationCode}</h1>
-                    </div>";
+            <div style='font-family: Arial, sans-serif; padding: 20px; border-radius: 10px;'>
+                <h2 style='color: #e50914;'>CineVerse'e Hoş Geldiniz!</h2>
+                <p>Merhaba {request.Username},</p>
+                <p>Kaydınızı tamamlamak için aşağıdaki 6 haneli doğrulama kodunu kullanın:</p>
+                <h1 style='background-color: #f4f4f4; padding: 10px; text-align: center; letter-spacing: 5px;'>{verificationCode}</h1>
+            </div>";
 
                 await _emailService.SendEmailAsync(request.Email, "CineVerse - E-posta Doğrulama Kodu", mailBody);
                 return Ok(new { Message = "Kayıt alındı. Lütfen e-postanıza gelen kodu girin." });

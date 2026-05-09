@@ -29,5 +29,6 @@ namespace DigitalMovieStore.Data.Contexts
 
         // İleride tabloların kısıtlamalarını (Maksimum karakter, zorunlu alanlar vb.)
         // ayarlamak istersek OnModelCreating metodunu burada ezeceğiz.
+        public DbSet<UserFavorite> UserFavorites { get; set; }
     }
 }
